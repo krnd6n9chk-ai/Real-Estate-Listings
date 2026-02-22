@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物件資料表紙 - A4横 (日付自動リンク版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2C3E50',   /* 濃紺 - 信頼 */
+                        secondary: '#34495E', /* 補助グレー */
+                        accent: '#4285F4',    /* 青 - デフォルト強調 */
+                        alert: '#EA4335',     /* 赤 - 注意 */
+                        success: '#34A853',   /* 緑 - メリット */
+                        bgray: '#F8F9FA'      /* 背景 */
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans JP"', 'sans-serif'],
+                        serif: ['"Noto Serif JP"', 'serif'],
+                    },
+                    screens: {
+                        'print': {'raw': 'print'},
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* A4横向き設定 */
+        @page { size: A4 landscape; margin: 0; }
+        body { 
+            background-color: #525659; 
+            font-family: "Noto Sans JP", sans-serif; 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+        }
+        
+        /* シート設定 */
+        .sheet {
+            width: 297mm; 
+            height: 209mm; 
+            background: white; 
+            margin: 10mm auto; 
+            position: relative; 
+            box-shadow: 0 0 15px rgba(0,0,0,0.15); 
+            overflow: hidden;
+            display: flex; 
+            flex-direction: column; 
+            page-break-after: always;
+        }
+
+        /* 編集エリアUI */
+        [contenteditable]:hover { background-color: rgba(0, 0, 0, 0.03); cursor: text; outline: 1px dashed #ccc; }
+        [contenteditable]:focus { outline: 2px solid var(--theme-color, #4285F4); background-color: rgba(255, 255, 255, 0.9); padding: 2px; border-radius: 2px; }
+        
+        /* プレースホルダー表示 */
+        [contenteditable]:empty::before {
+            content: attr(placeholder);
+            color: #ccc;
+            display: inline-block;
+        }
+        [contenteditable]:focus::before {
+            content: none;
+        }
+
+        /* 画像アップロードゾーン */
+        .bg-upload-zone {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 0; background-color: #f3f4f6; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            outline: none;
+        }
+        .bg-upload-zone:focus {
+            box-shadow: inset 0 0 0 4px rgba(66, 133, 244, 0.5);
+            background-color: #eff6ff;
+        }
+
+        .bg-preview {
+            width: 100%; height: 100%; object-fit: contain;
+            position: absolute; top: 0; left: 0; z-index: 1;
+            pointer-events: none;
+        }
+        .sheet-area .bg-preview { object-fit: cover; }
+        
+        .upload-trigger {
+            z-index: 10; background: rgba(255,255,255,0.9);
+            padding: 1rem 2rem; border-radius: 0.5rem;
+            cursor: pointer; text-align: center;
+            border: 2px dashed #9ca3af; transition: 0.3s;
+        }
+        .upload-trigger:hover { background: white; border-color: #4285F4; color: #4285F4; }
+        .bg-upload-zone:focus .upload-trigger { border-color: #4285F4; color: #4285F4; }
+
+        /* ロゴプレビュー */
+        .logo-upload-wrapper { cursor: pointer; position: relative; }
+        .logo-upload-wrapper:hover::after {
+            content: 'ロゴを変更';
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px;
+        }
+
+        /* --- 動的カラーテーマ用CSS --- */
+        .dynamic-text { color: var(--theme-color, #4285F4); }
+        .dynamic-bg { background-color: var(--theme-color, #4285F4); }
+        .dynamic-border { border-color: var(--theme-color, #4285F4); }
+        
+        /* ページ内ボタン共通 */
+        .page-btn {
+            position: absolute; top: 1rem;
+            z-index: 50;
+            padding: 5px 10px; border-radius: 20px;
+            font-size: 12px; cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: 0.2s; display: flex; align-items: center; gap: 5px;
+        }
+        .page-btn:hover { transform: scale(1.05); }
+
+        .color-picker-btn { right: 1rem; background: white; border: 1px solid #ccc; color: #555; }
+        .delete-page-btn { right: 8rem; background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; }
+        .sheet-property .delete-page-btn { right: 1rem; }
+
+        /* モーダル共通 */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 100;
+            display: none; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; padding: 20px; border-radius: 8px;
+            width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        /* 画像編集モーダル専用 */
+        .editor-modal-content {
+            width: 98vw; height: 95vh; max-width: none;
+            display: flex; flex-direction: column;
+            padding: 0; overflow: hidden;
+        }
+        .editor-canvas-container {
+            flex: 1; background: #e5e7eb; overflow: auto; position: relative;
+            display: flex; justify-content: center; align-items: center;
+            cursor: crosshair;
+            padding: 100px;
+        }
+        .editor-toolbar {
+            padding: 15px; background: white; border-top: 1px solid #ddd;
+            display: flex; gap: 10px; justify-content: space-between; align-items: center;
+            flex-shrink: 0;
+        }
+
+        /* カラーグリッド */
+        .color-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; }
+        .color-option {
+            width: 100%; aspect-ratio: 1; border-radius: 50%; cursor: pointer;
+            border: 2px solid white; box-shadow: 0 0 0 1px #ddd; position: relative; transition: 0.2s;
+        }
+        .color-option:hover { transform: scale(1.1); z-index: 10; }
+        .color-option.selected { box-shadow: 0 0 0 2px #333; transform: scale(1.1); }
+        .color-option.used::after {
+            content: '使用中'; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8px; color: white; font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5); white-space: nowrap;
+        }
+
+        /* エリア選択グリッド */
+        .area-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .area-btn {
+            padding: 10px; border: 1px solid #ddd; border-radius: 5px; cursor: pointer;
+            text-align: center; font-size: 14px; transition: 0.2s; background: white;
+        }
+        .area-btn:hover { background: #e0f2fe; border-color: #4285F4; color: #4285F4; }
+        /* 駅名などのボタンは少し小さく */
+        .area-grid-station { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+        .area-btn-station {
+            padding: 6px; border: 1px solid #eee; border-radius: 4px; cursor: pointer;
+            text-align: center; font-size: 12px; transition: 0.2s; background: #fff;
+        }
+        .area-btn-station:hover { background: #e0f2fe; border-color: #4285F4; color: #4285F4; }
+
+        .area-section-title {
+            font-weight: bold; margin: 24px 0 10px; color: #2C3E50;
+            border-bottom: 2px solid #eee; padding-bottom: 5px; font-size: 14px;
+            display: flex; align-items: center;
+        }
+        .area-section-title i { margin-right: 8px; color: #4285F4; }
+        .area-section-title:first-child { margin-top: 0; }
+        
+        .area-subsection-title {
+            font-size: 12px; font-weight: bold; color: #64748B; margin: 12px 0 6px;
+            border-left: 3px solid #cbd5e1; padding-left: 8px;
+        }
+
+        /* 物件番号バッジ */
+        .property-number {
+            position: absolute; top: 0; left: 0; z-index: 30;
+            background-color: #2C3E50; color: white;
+            font-weight: bold; padding: 0.5rem 1.5rem 0.5rem 1rem;
+            font-size: 1.5rem;
+            border-bottom-right-radius: 2rem;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            font-family: "Noto Serif JP", serif;
+        }
+
+        /* 印刷設定 */
+        @media print {
+            body { background: none; }
+            .sheet { margin: 0; box-shadow: none; width: 297mm; height: 210mm; page-break-after: always; }
+            .no-print, .page-btn { display: none !important; }
+            .bg-upload-zone { background-color: white; }
+            .upload-trigger { display: none !important; }
+            [contenteditable]:empty::before { content: none; }
+            .bg-upload-zone:focus { box-shadow: none; background-color: white; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 操作バー -->
+    <div class="no-print fixed top-0 left-0 w-full bg-gray-900 text-white p-3 z-50 flex justify-between items-center shadow-lg opacity-95">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-file-powerpoint text-accent"></i>
+                <span id="report-title" contenteditable="true" class="font-bold text-lg border-b border-gray-600 focus:border-accent focus:outline-none px-1">物件紹介資料_A4横</span>
+            </div>
+            <div class="text-xs text-gray-400 pl-4 border-l border-gray-700">
+                <i class="fas fa-info-circle mr-1"></i>テキスト編集 / 画像Ctrl+V貼付
+            </div>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="openEditorModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded shadow text-sm flex items-center gap-2 transition">
+                <i class="fas fa-tools"></i> 画像編集
+            </button>
+            <div class="w-px bg-gray-600 mx-1"></div>
+            <button onclick="openAreaModal()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-3 rounded shadow text-sm flex items-center gap-2 transition">
+                <i class="fas fa-map"></i> エリア/交通/利回り
+            </button>
+            <button onclick="addPropertyPage()" class="bg-orange-500 hover:bg-orange-400 text-white font-bold py-2 px-3 rounded shadow text-sm flex items-center gap-2 transition">
+                <i class="fas fa-home"></i> 物件ページ追加
+            </button>
+            <div class="w-px bg-gray-600 mx-1"></div>
+            <button onclick="saveHTML()" class="bg-success hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow text-sm flex items-center gap-2 transition">
+                <i class="fas fa-download"></i> 保存
+            </button>
+            <button onclick="window.print()" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded shadow text-sm transition flex items-center gap-2">
+                <i class="fas fa-print"></i> 印刷
+            </button>
+        </div>
+    </div>
+    <div class="h-16 no-print"></div>
+
+    <!-- Sheet 1: 表紙 -->
+    <div class="sheet p-12 relative overflow-hidden" id="sheet-cover">
+        <!-- 背景画像エリア -->
+        <div class="bg-upload-zone group" tabindex="0" onpaste="handlePaste(event, this)">
+            <img id="bg-img-preview-cover" class="bg-preview hidden" alt="Background">
+            <div class="upload-trigger group-hover:opacity-100 transition-opacity" onclick="triggerFileInput(this, event)">
+                <i class="fas fa-camera text-3xl mb-2 text-gray-500"></i><br>
+                <span class="font-bold text-sm text-gray-600">背景写真を設定</span>
+                <p class="text-[10px] text-gray-400 mt-1">クリックで選択 / または枠を選択してCtrl+V</p>
+            </div>
+            <input type="file" id="bg-upload-cover" class="hidden" accept="image/*" onchange="previewBgGeneral(this)">
+            <div class="absolute top-0 left-0 w-full h-full bg-white/40 pointer-events-none z-1"></div>
+        </div>
+
+        <!-- 背景装飾 -->
+        <div class="absolute top-0 right-0 w-[40%] h-full bg-gray-50/80 -skew-x-12 transform origin-top-right z-2 backdrop-blur-sm"></div>
+        <div class="absolute top-0 right-[38%] w-2 h-full bg-accent/20 -skew-x-12 transform origin-top-right z-2"></div>
+        <div class="absolute bottom-0 left-0 w-full h-4 bg-primary z-10"></div>
+
+        <div class="content-layer z-10 h-full flex flex-col relative">
+            <!-- ヘッダー -->
+            <div class="flex justify-between items-start border-b border-gray-400/50 pb-4 mb-8">
+                <div>
+                    <p class="text-xs font-bold tracking-[0.2em] text-accent uppercase mb-1">Real Estate Presentation</p>
+                    <!-- 自動日付設定用のID "creation-date" を付与 -->
+                    <p id="creation-date" class="text-sm text-gray-600 font-serif" contenteditable="true">2026年1月26日 作成</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest">Document No.</p>
+                    <p class="text-sm font-mono text-gray-700" contenteditable="true">RE-2026-001</p>
+                </div>
+            </div>
+
+            <!-- メインタイトルエリア -->
+            <div class="flex-1 flex flex-col justify-center items-center text-center">
+                <div class="relative p-10 border-y-2 border-primary/20 w-full max-w-4xl bg-white/60 backdrop-blur-md rounded-lg shadow-sm">
+                    <p class="text-xl font-medium text-gray-600 mb-6 font-serif tracking-widest" contenteditable="true">ー ご提案資料 ー</p>
+                    <h1 class="text-[4rem] font-bold text-primary font-serif tracking-widest leading-tight mb-8" contenteditable="true">
+                        物件紹介資料
+                    </h1>
+                    <div class="w-24 h-1 bg-accent mx-auto mb-8"></div>
+                    <p class="text-2xl text-gray-800 font-medium" contenteditable="true">
+                        札幌市西区発寒 プロジェクト
+                    </p>
+                </div>
+            </div>
+
+            <!-- フッター -->
+            <div class="mt-auto pt-8 flex justify-between items-end">
+                <div class="flex items-center gap-6">
+                    <div class="logo-upload-wrapper group" onclick="document.getElementById('logo-upload-1').click()">
+                        <div id="logo-placeholder-1" class="border border-gray-400 w-36 h-12 flex items-center justify-center text-gray-500 font-serif tracking-widest text-lg bg-white/50 backdrop-blur">LOGO</div>
+                        <img id="logo-preview-1" class="hidden h-12 w-auto object-contain" alt="Logo">
+                        <input type="file" id="logo-upload-1" class="hidden" accept="image/*" onchange="previewLogo(this, '1')">
+                    </div>
+                    <div class="border-l border-gray-400 pl-6">
+                        <h3 class="text-base font-bold text-primary tracking-wider mb-1">株式会社リード・リアルエステート <span class="text-xs font-normal text-gray-600">開発事業部札幌支店</span></h3>
+                        <p class="text-xs text-gray-600 leading-relaxed font-sans">
+                            〒060-0062 札幌市中央区南2条西1丁目2-1 21きのしたビル4F<br>
+                            TEL: 011-252-7760 / URL: https://www.lead-real.co.jp
+                        </p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="inline-block bg-primary text-white px-6 py-3 shadow-md rounded-sm text-left min-w-[200px]">
+                        <p class="text-[10px] opacity-60 uppercase tracking-widest mb-1">Contact Person</p>
+                        <p class="text-lg font-serif font-bold" contenteditable="true">担当：三宮 昂平</p>
+                        <p class="text-xs mt-1 opacity-90 font-sans"><i class="fas fa-phone-alt mr-2 text-accent"></i>070-4485-9305</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- コンテンツコンテナ -->
+    <div id="pages-container">
+        <!-- 初期ページは空 -->
+    </div>
+
+    <!-- 画像編集モーダル -->
+    <div id="editorModal" class="modal-overlay" onclick="closeModal('editorModal', event)" style="z-index: 200;">
+        <div class="modal-content editor-modal-content" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center p-3 bg-gray-100 border-b">
+                <div class="flex items-center gap-2">
+                    <h3 class="font-bold text-primary"><i class="fas fa-tools mr-2"></i>画像編集ツール</h3>
+                    <p class="text-xs text-gray-500">範囲を選択して「消去」または「切り抜き」</p>
+                </div>
+                <button onclick="document.getElementById('editorModal').style.display='none'" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            
+            <div class="editor-canvas-container" id="editorCanvasContainer" tabindex="0" onpaste="handleEditorPaste(event)">
+                <div id="canvasPlaceholder" class="text-center text-gray-400">
+                    <i class="fas fa-image text-4xl mb-2"></i><br>
+                    <p class="mb-2">ここに画像をドラッグ＆ドロップ<br>または Ctrl+V で貼り付け</p>
+                    <button onclick="document.getElementById('editorFileInput').click()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm">ファイルを選択</button>
+                    <input type="file" id="editorFileInput" class="hidden" accept="image/*" onchange="loadEditorImage(this)">
+                </div>
+                <canvas id="editorCanvas" class="hidden shadow-lg"></canvas>
+            </div>
+
+            <div class="editor-toolbar">
+                <div class="flex gap-2">
+                    <button onclick="resetEditor()" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm shadow-sm"><i class="fas fa-trash-restore mr-1"></i>リセット</button>
+                    <div class="w-px bg-gray-300 mx-1"></div>
+                    <button onclick="clearSelection()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm"><i class="fas fa-undo"></i> 選択解除</button>
+                    <div class="w-px bg-gray-300 mx-1"></div>
+                    <button onclick="executeErase()" class="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm border border-red-200 font-bold"><i class="fas fa-eraser"></i> 選択範囲を消去(白)</button>
+                    <button onclick="executeCrop()" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm border border-blue-200 font-bold"><i class="fas fa-crop-alt"></i> 選択範囲で切り抜き</button>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="copyCanvasToClipboard()" class="bg-accent hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-bold shadow"><i class="far fa-copy"></i> コピー</button>
+                    <button onclick="downloadCanvasImage()" class="bg-success hover:bg-green-600 text-white px-4 py-1.5 rounded text-sm font-bold shadow"><i class="fas fa-download"></i> 保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- カラー選択モーダル -->
+    <div id="colorModal" class="modal-overlay" onclick="closeModal('colorModal', event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h3 class="font-bold text-gray-700">テーマカラーを選択</h3>
+                <button onclick="closeModal('colorModal')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="color-grid" id="colorGrid"></div>
+        </div>
+    </div>
+
+    <!-- エリア選択モーダル -->
+    <div id="areaModal" class="modal-overlay" onclick="closeModal('areaModal', event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h3 class="font-bold text-gray-700">追加するエリア/条件を選択</h3>
+                <button onclick="closeModal('areaModal')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="areaSelectorContent">
+                <!-- JSで生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- エリアページテンプレート -->
+    <template id="area-page-template">
+        <div class="sheet sheet-area relative overflow-hidden flex flex-col justify-center items-center text-center p-12 bg-gradient-to-br from-gray-50 via-white to-blue-50" style="--theme-color: #4285F4;">
+            <button class="page-btn color-picker-btn" onclick="openColorModal(this.closest('.sheet').id)">
+                <i class="fas fa-palette text-gray-500"></i> <span class="text-gray-600 font-bold">色変更</span>
+                <span class="w-4 h-4 rounded-full border border-gray-300 dynamic-bg"></span>
+            </button>
+            <button class="page-btn delete-page-btn" onclick="deletePage(this.closest('.sheet').id)">
+                <i class="fas fa-trash-alt"></i> 削除
+            </button>
+            <div class="absolute top-0 left-0 w-full h-4 dynamic-bg z-0"></div>
+            <div class="absolute bottom-0 right-0 w-[45%] h-full bg-white/40 -skew-x-12 transform origin-bottom-right z-0 backdrop-blur-sm border-l border-white/50"></div>
+            <div class="absolute top-0 left-0 w-32 h-32 dynamic-bg rounded-br-full z-0 opacity-10"></div>
+            <div class="absolute top-0 right-0 dynamic-bg text-white px-4 py-2 font-bold text-sm shadow-md z-30">Concept</div>
+            <div class="relative z-10 w-full max-w-5xl">
+                <p class="text-3xl font-medium text-gray-400 mb-10 font-serif tracking-[0.4em] uppercase" contenteditable="true">Highlight</p>
+                <h2 class="text-[6rem] sm:text-[8rem] font-black leading-none tracking-tighter text-primary mb-6 drop-shadow-sm area-title" contenteditable="true">
+                    エリア<br><span class="dynamic-text">名称</span>
+                </h2>
+                <div class="w-40 h-3 dynamic-bg mx-auto mt-10 mb-10 shadow-sm"></div>
+                <p class="text-2xl text-gray-500 font-serif tracking-widest area-en-title" contenteditable="true">English Title</p>
+                <p class="mt-8 text-sm text-gray-600 max-w-2xl mx-auto leading-relaxed border border-dashed border-transparent hover:border-gray-300 rounded p-2 transition area-detail-text" contenteditable="true" placeholder="ここに詳細情報や特徴を入力してください"></p>
+                <div class="no-print mt-1 text-right max-w-2xl mx-auto">
+                    <button onclick="syncTextToAllAreaPages(this)" class="text-[10px] text-accent hover:text-blue-700 bg-white/50 hover:bg-white px-2 py-1 rounded border border-gray-200 transition shadow-sm">
+                        <i class="fas fa-copy mr-1"></i>この内容を全エリアページに反映
+                    </button>
+                </div>
+            </div>
+            <div class="absolute bottom-8 left-12 text-left z-20">
+                <p class="text-xs text-gray-400 tracking-widest uppercase">Information</p>
+            </div>
+        </div>
+    </template>
+
+    <!-- 物件画像ページテンプレート -->
+    <template id="property-page-template">
+        <div class="sheet sheet-property relative overflow-hidden bg-white">
+            <button class="page-btn delete-page-btn" onclick="deletePage(this.closest('.sheet').id)">
+                <i class="fas fa-trash-alt"></i> 削除
+            </button>
+            <div class="property-number">①</div>
+            <div class="bg-upload-zone group h-full w-full cursor-pointer focus:ring-4 focus:ring-accent focus:outline-none" tabindex="0" onpaste="handlePaste(event, this)">
+                <img class="bg-preview hidden" alt="Property Image">
+                <div class="upload-trigger group-hover:opacity-100 transition-opacity" onclick="triggerFileInput(this, event)">
+                    <i class="fas fa-images text-3xl mb-2 text-gray-500"></i><br>
+                    <span class="font-bold text-sm text-gray-600">物件画像を設定</span>
+                    <p class="text-[10px] text-gray-400 mt-1">クリックで選択 / または枠を選択してCtrl+V</p>
+                </div>
+            </div>
+            <input type="file" class="hidden" accept="image/*" onchange="previewBgGeneral(this)">
+        </div>
+    </template>
+
+    <script>
+        // エリアデータ定義
+        const areaData = {
+            sapporo: [
+                { name: '中央区', en: 'Chuo-ku' }, { name: '北区', en: 'Kita-ku' }, { name: '東区', en: 'Higashi-ku' },
+                { name: '白石区', en: 'Shiroishi-ku' }, { name: '豊平区', en: 'Toyohira-ku' }, { name: '南区', en: 'Minami-ku' },
+                { name: '西区', en: 'Nishi-ku' }, { name: '厚別区', en: 'Atsubetsu-ku' }, { name: '手稲区', en: 'Teine-ku' },
+                { name: '清田区', en: 'Kiyota-ku' }
+            ],
+            nearby: [
+                { name: '恵庭市', en: 'Eniwa City' }, { name: '江別市', en: 'Ebetsu City' }, { name: '千歳市', en: 'Chitose City' },
+                { name: '小樽市', en: 'Otaru City' }, { name: '北広島市', en: 'Kitahiroshima City' }
+            ],
+            subway: {
+                n: [ // 南北線
+                    { n: '麻生', e: 'Asabu' }, { n: '北34条', e: 'Kita-Sanjuyo-Jo' }, { n: '北24条', e: 'Kita-Nijuyo-Jo' },
+                    { n: '北18条', e: 'Kita-Juhachi-Jo' }, { n: '北12条', e: 'Kita-Juni-Jo' }, { n: 'さっぽろ', e: 'Sapporo' },
+                    { n: '大通', e: 'Odori' }, { n: 'すすきの', e: 'Susukino' }, { n: '中島公園', e: 'Nakajima Koen' },
+                    { n: '幌平橋', e: 'Horohira-Bashi' }, { n: '中の島', e: 'Nakanoshima' }, { n: '平岸', e: 'Hiragishi' },
+                    { n: '南平岸', e: 'Minami-Hiragishi' }, { n: '澄川', e: 'Sumikawa' }, { n: '自衛隊前', e: 'Jieitai-Mae' },
+                    { n: '真駒内', e: 'Makomanai' }
+                ],
+                t: [ // 東西線
+                    { n: '宮の沢', e: 'Miyanosawa' }, { n: '発寒南', e: 'Hassamu-Minami' }, { n: '琴似', e: 'Kotoni' },
+                    { n: '二十四軒', e: 'Nijuyon-Ken' }, { n: '西28丁目', e: 'Nishi-Nijuhatchome' }, { n: '円山公園', e: 'Maruyama Koen' },
+                    { n: '西18丁目', e: 'Nishi-Juhatchome' }, { n: '西11丁目', e: 'Nishi-Juitchome' }, { n: '大通', e: 'Odori' },
+                    { n: 'バスセンター前', e: 'Bus Center-Mae' }, { n: '菊水', e: 'Kikusui' }, { n: '東札幌', e: 'Higashi-Sapporo' },
+                    { n: '白石', e: 'Shiroishi' }, { n: '南郷7丁目', e: 'Nango-Nanachome' }, { n: '南郷13丁目', e: 'Nango-Jusanchome' },
+                    { n: '南郷18丁目', e: 'Nango-Juhatchome' }, { n: '大谷地', e: 'Oyachi' }, { n: 'ひばりが丘', e: 'Hibarigaoka' },
+                    { n: '新さっぽろ', e: 'Shin-Sapporo' }
+                ],
+                h: [ // 東豊線
+                    { n: '栄町', e: 'Sakaemachi' }, { n: '新道東', e: 'Shindo-Higashi' }, { n: '元町', e: 'Motomachi' },
+                    { n: '環状通東', e: 'Kanjodori-Higashi' }, { n: '東区役所前', e: 'Higashi-Kuyakusho-Mae' }, { n: '北13条東', e: 'Kita-Jusan-Jo-Higashi' },
+                    { n: 'さっぽろ', e: 'Sapporo' }, { n: '大通', e: 'Odori' }, { n: '豊水すすきの', e: 'Hosui-Susukino' },
+                    { n: '学園前', e: 'Gakuen-Mae' }, { n: '豊平公園', e: 'Toyohira Koen' }, { n: '美園', e: 'Misono' },
+                    { n: '月寒中央', e: 'Tsukisamu-Chuo' }, { n: '福住', e: 'Fukuzumi' }
+                ]
+            },
+            jr: [
+                { n: '札幌', e: 'Sapporo' }, { n: '琴似', e: 'Kotoni' }, { n: '手稲', e: 'Teine' }, { n: '新札幌', e: 'Shin-Sapporo' },
+                { n: '桑園', e: 'Soen' }, { n: '白石', e: 'Shiroishi' }, { n: '苗穂', e: 'Naebo' }, { n: '厚別', e: 'Atsubetsu' },
+                { n: '森林公園', e: 'Shinrinkoen' }, { n: '大麻', e: 'Oasa' }, { n: '野幌', e: 'Nopporo' }, { n: '高砂', e: 'Takasago' },
+                { n: '江別', e: 'Ebetsu' }, { n: '平和', e: 'Heiwa' }, { n: '上野幌', e: 'Kami-Nopporo' }, { n: '北広島', e: 'Kitahiroshima' },
+                { n: '島松', e: 'Shimamatsu' }, { n: '恵み野', e: 'Megumino' }, { n: '恵庭', e: 'Eniwa' }, { n: '千歳', e: 'Chitose' },
+                { n: '南千歳', e: 'Minami-Chitose' }, { n: '新千歳空港', e: 'New Chitose Airport' }, { n: '八軒', e: 'Hachiken' },
+                { n: '新川', e: 'Shinkawa' }, { n: '新琴似', e: 'Shin-Kotoni' }, { n: '太平', e: 'Taihei' }, { n: '百合が原', e: 'Yurigahara' },
+                { n: '篠路', e: 'Shinoro' }, { n: '拓北', e: 'Takuhoku' }, { n: 'あいの里', e: 'Ainosato' }
+            ],
+            tram: [
+                { n: '西4丁目', e: 'Nishi-Yon-Chome' }, { n: '狸小路', e: 'Tanukikoji' }, { n: 'すすきの', e: 'Susukino' },
+                { n: '東本願寺前', e: 'Higashi-Honganji-Mae' }, { n: '山鼻9条', e: 'Yamahana-Kujo' }, { n: '中島公園通', e: 'Nakajima-Koen-Dori' },
+                { n: '行啓通', e: 'Gyokei-Dori' }, { n: '静修学園前', e: 'Seishu-Gakuen-Mae' }, { n: '山鼻19条', e: 'Yamahana-Jukujo' },
+                { n: '幌南小学校前', e: 'Konan-Shogakko-Mae' }, { n: '東屯田通', e: 'Higashi-Tonden-Dori' }, { n: '石山通', e: 'Ishiyama-Dori' },
+                { n: '中央図書館前', e: 'Chuo-Toshokan-Mae' }, { n: '電車事業所前', e: 'Densha-Jigyosho-Mae' }, { n: 'ロープウェイ入口', e: 'Ropeway-Iriguchi' },
+                { n: '西線16条', e: 'Nishisen-Jurokujo' }, { n: '西線14条', e: 'Nishisen-Juyojo' }, { n: '西線11条', e: 'Nishisen-Juichijo' },
+                { n: '西線9条旭山公園通', e: 'Nishisen-Kujo-Asahiyama-Koen-Dori' }, { n: '西線6条', e: 'Nishisen-Rokujo' },
+                { n: '西15丁目', e: 'Nishi-Jugochome' }, { n: '中央区役所前', e: 'Chuo-Kuyakusho-Mae' }
+            ]
+        };
+
+        const colorPalette = [
+            { code: '#4285F4', name: 'Blue (Default)' }, { code: '#1e3a8a', name: 'Navy' }, { code: '#0d9488', name: 'Teal' },
+            { code: '#16a34a', name: 'Green' }, { code: '#65a30d', name: 'Olive' }, { code: '#ca8a04', name: 'Gold' },
+            { code: '#ea580c', name: 'Orange' }, { code: '#dc2626', name: 'Red' }, { code: '#9f1239', name: 'Wine' },
+            { code: '#7e22ce', name: 'Purple' }, { code: '#78350f', name: 'Brown' }, { code: '#374151', name: 'Charcoal' }
+        ];
+
+        let currentEditingSheetId = null;
+
+        // モーダル制御
+        function closeModal(id, e) {
+            if (id === 'editorModal' && e && e.target.id === id) return;
+            if (!e || e.target.id === id || e.target.closest('button')) {
+                document.getElementById(id).style.display = 'none';
+                if(id === 'colorModal') currentEditingSheetId = null;
+            }
+        }
+
+        // --- 画像編集ツール ---
+        let editorCanvas, editorCtx;
+        let editorImage = null;
+        let isSelecting = false;
+        let startX, startY, endX, endY;
+
+        function openEditorModal() {
+            const modal = document.getElementById('editorModal');
+            modal.style.display = 'flex';
+            if(!editorCanvas) {
+                editorCanvas = document.getElementById('editorCanvas');
+                editorCtx = editorCanvas.getContext('2d');
+                editorCanvas.addEventListener('mousedown', onEditorMouseDown);
+                const container = document.getElementById('editorCanvasContainer');
+                container.addEventListener('dragover', (e) => { e.preventDefault(); });
+                container.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    if(e.dataTransfer.files && e.dataTransfer.files[0]) loadFileToCanvas(e.dataTransfer.files[0]);
+                });
+            }
+            document.getElementById('editorCanvasContainer').focus();
+        }
+
+        function loadEditorImage(input) { if(input.files && input.files[0]) loadFileToCanvas(input.files[0]); }
+        function handleEditorPaste(e) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    loadFileToCanvas(item.getAsFile());
+                    e.preventDefault(); return;
+                }
+            }
+        }
+        function loadFileToCanvas(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    editorImage = img;
+                    editorCanvas.width = img.width;
+                    editorCanvas.height = img.height;
+                    drawEditor();
+                    document.getElementById('canvasPlaceholder').style.display = 'none';
+                    editorCanvas.classList.remove('hidden');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        function drawEditor() {
+            if(!editorImage) return;
+            editorCtx.drawImage(editorImage, 0, 0);
+            if (isSelecting || (startX !== undefined && endX !== undefined)) {
+                const x = Math.min(startX, endX); const y = Math.min(startY, endY);
+                const w = Math.abs(endX - startX); const h = Math.abs(endY - startY);
+                editorCtx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                editorCtx.fillRect(x, y, w, h);
+                editorCtx.strokeStyle = 'red';
+                editorCtx.lineWidth = 2;
+                editorCtx.strokeRect(x, y, w, h);
+            }
+        }
+        function getCanvasCoordinates(e) {
+            const rect = editorCanvas.getBoundingClientRect();
+            const scaleX = editorCanvas.width / rect.width;
+            const scaleY = editorCanvas.height / rect.height;
+            let x = (e.clientX - rect.left) * scaleX;
+            let y = (e.clientY - rect.top) * scaleY;
+            x = Math.max(0, Math.min(x, editorCanvas.width));
+            y = Math.max(0, Math.min(y, editorCanvas.height));
+            return { x, y };
+        }
+        function onEditorMouseDown(e) {
+            if (e.button !== 0) return;
+            const coords = getCanvasCoordinates(e);
+            startX = coords.x; startY = coords.y; endX = startX; endY = startY;
+            isSelecting = true;
+            window.addEventListener('mousemove', onEditorMouseMove);
+            window.addEventListener('mouseup', onEditorMouseUp);
+            drawEditor();
+        }
+        function onEditorMouseMove(e) {
+            if(!isSelecting) return;
+            const coords = getCanvasCoordinates(e);
+            endX = coords.x; endY = coords.y;
+            drawEditor();
+        }
+        function onEditorMouseUp(e) {
+            if(!isSelecting) return;
+            isSelecting = false;
+            window.removeEventListener('mousemove', onEditorMouseMove);
+            window.removeEventListener('mouseup', onEditorMouseUp);
+        }
+        function clearSelection() { startX = undefined; startY = undefined; endX = undefined; endY = undefined; drawEditor(); }
+        function resetEditor() {
+            if (!editorImage && document.getElementById('canvasPlaceholder').style.display !== 'none') return;
+            if(confirm('画像をリセットして初期状態に戻しますか？')) {
+                editorImage = null;
+                editorCtx.clearRect(0, 0, editorCanvas.width, editorCanvas.height);
+                editorCanvas.classList.add('hidden');
+                document.getElementById('canvasPlaceholder').style.display = 'block';
+                document.getElementById('editorFileInput').value = '';
+                clearSelection();
+            }
+        }
+        function executeErase() {
+            if(startX === undefined || endX === undefined) { alert('範囲を選択してください'); return; }
+            editorCtx.drawImage(editorImage, 0, 0); 
+            const x = Math.min(startX, endX); const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX); const h = Math.abs(endY - startY);
+            editorCtx.fillStyle = 'white'; editorCtx.fillRect(x, y, w, h);
+            const newData = editorCanvas.toDataURL();
+            const newImg = new Image();
+            newImg.onload = function() { editorImage = newImg; clearSelection(); };
+            newImg.src = newData;
+        }
+        function executeCrop() {
+            if(startX === undefined || endX === undefined) { alert('範囲を選択してください'); return; }
+            const x = Math.min(startX, endX); const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX); const h = Math.abs(endY - startY);
+            if(w < 1 || h < 1) return;
+            const croppedData = editorCtx.getImageData(x, y, w, h);
+            editorCanvas.width = w; editorCanvas.height = h;
+            editorCtx.putImageData(croppedData, 0, 0);
+            const newData = editorCanvas.toDataURL();
+            const newImg = new Image();
+            newImg.onload = function() { editorImage = newImg; clearSelection(); };
+            newImg.src = newData;
+        }
+        function copyCanvasToClipboard() {
+            if(!editorImage) return;
+            editorCanvas.toBlob(function(blob) {
+                const item = new ClipboardItem({ "image/png": blob });
+                navigator.clipboard.write([item]).then(() => alert("画像をコピーしました。\nCtrl+V で物件枠などに貼り付けられます。"), () => alert("コピーに失敗しました。"));
+            });
+        }
+        function downloadCanvasImage() {
+            if(!editorImage) return;
+            const link = document.createElement('a');
+            link.download = 'edited_image.png'; link.href = editorCanvas.toDataURL(); link.click();
+        }
+
+        // --- エリア選択 & ページ追加 ---
+        function openAreaModal() {
+            const container = document.getElementById('areaSelectorContent');
+            container.innerHTML = '';
+
+            // 汎用グリッド生成関数
+            const renderGrid = (title, items, onclickGen, isSmall=false) => {
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'area-section-title';
+                titleDiv.innerHTML = title; // HTML許可
+                container.appendChild(titleDiv);
+                const grid = document.createElement('div');
+                grid.className = isSmall ? 'area-grid-station' : 'area-grid';
+                items.forEach(item => {
+                    const btn = document.createElement('div');
+                    btn.className = isSmall ? 'area-btn-station' : 'area-btn';
+                    // アイテムがオブジェクトならnameプロパティ、文字列ならそのまま
+                    const label = item.name || item.n || item;
+                    btn.innerText = label;
+                    btn.onclick = onclickGen(item);
+                    grid.appendChild(btn);
+                });
+                container.appendChild(grid);
+            };
+
+            // 1. 札幌市・近郊
+            renderGrid('<i class="fas fa-map-marker-alt"></i>札幌市・近郊都市', [...areaData.sapporo, ...areaData.nearby], (item) => {
+                const enPrefix = item.name.includes('区') ? 'Sapporo' : 'Hokkaido';
+                return () => addAreaPageWithData(item.name, `${enPrefix} ${item.en}`);
+            });
+
+            // 2. 地下鉄
+            const subwayTitle = document.createElement('div');
+            subwayTitle.className = 'area-section-title';
+            subwayTitle.innerHTML = '<i class="fas fa-subway"></i>地下鉄';
+            container.appendChild(subwayTitle);
+
+            const renderSubwayLine = (name, code, color) => {
+                const subTitle = document.createElement('div');
+                subTitle.className = 'area-subsection-title';
+                subTitle.style.borderColor = color;
+                subTitle.innerText = name;
+                container.appendChild(subTitle);
+                
+                const grid = document.createElement('div');
+                grid.className = 'area-grid-station';
+                areaData.subway[code].forEach(st => {
+                    const btn = document.createElement('div');
+                    btn.className = 'area-btn-station';
+                    btn.innerText = st.n;
+                    // 地下鉄〇〇線〇〇駅エリア
+                    const titleHtml = `地下鉄${name}<br><span class="dynamic-text">${st.n}</span>駅エリア`;
+                    // Subway XX Line XX Station Area
+                    const lineEn = name === '南北線' ? 'Namboku' : name === '東西線' ? 'Tozai' : 'Toho';
+                    const enText = `Subway ${lineEn} Line ${st.e} Station Area`;
+                    
+                    btn.onclick = () => addAreaPageWithData(titleHtml, enText);
+                    grid.appendChild(btn);
+                });
+                container.appendChild(grid);
+            };
+            renderSubwayLine('南北線', 'n', '#34A853'); // 緑
+            renderSubwayLine('東西線', 't', '#FF9900'); // オレンジ
+            renderSubwayLine('東豊線', 'h', '#4285F4'); // 青
+
+            // 3. JR線
+            renderGrid('<i class="fas fa-train"></i>JR線 (主要駅)', areaData.jr, (st) => {
+                const titleHtml = `JR線<br><span class="dynamic-text">${st.n}</span>駅エリア`;
+                const enText = `JR Line ${st.e} Station Area`;
+                return () => addAreaPageWithData(titleHtml, enText);
+            }, true);
+
+            // 4. 市電
+            renderGrid('<i class="fas fa-tram"></i>市電 (停留所)', areaData.tram, (st) => {
+                const titleHtml = `市電<br><span class="dynamic-text">${st.n}</span>エリア`;
+                const enText = `Tram ${st.e} Stop Area`;
+                return () => addAreaPageWithData(titleHtml, enText);
+            }, true);
+
+            // 5. 収益物件 (利回り)
+            const yieldTitle = document.createElement('div');
+            yieldTitle.className = 'area-section-title';
+            yieldTitle.innerHTML = '<i class="fas fa-chart-line"></i>収益物件 (利回り)';
+            container.appendChild(yieldTitle);
+
+            const yieldGrid = document.createElement('div');
+            yieldGrid.className = 'area-grid';
+            
+            const yields = [
+                { label: '4%以下', val: '4%', suffix: '以下' },
+                { label: '5%以下', val: '5%', suffix: '以下' },
+                { label: '6%以下', val: '6%', suffix: '以下' },
+                { label: '8%台', val: '8%', suffix: '台' },
+                { label: '9%台', val: '9%', suffix: '台' },
+                { label: '10%台', val: '10%', suffix: '台' },
+                { label: '12%以上', val: '12%', suffix: '以上' },
+                { label: '15%以上', val: '15%', suffix: '以上' },
+                { label: '満室稼働中', text: '満室<br><span class="dynamic-text">稼働中</span>', en: 'Full Occupancy' },
+                { label: '高利回り', text: '高利回り<br><span class="dynamic-text">物件</span>', en: 'High Yield Property' }
+            ];
+
+            yields.forEach(item => {
+                const btn = document.createElement('div');
+                btn.className = 'area-btn';
+                btn.innerText = item.label;
+                if (item.text) {
+                    btn.onclick = () => addAreaPageWithData(item.text, item.en);
+                } else {
+                    const titleHtml = `表面利回り<br><span class="dynamic-text">${item.val}</span>${item.suffix}`;
+                    let enSuffix = '';
+                    if (item.suffix === '以上') enSuffix = ' or more';
+                    else if (item.suffix === '以下') enSuffix = ' or less';
+                    const enText = `Gross Yield ${item.val}${enSuffix}`;
+                    btn.onclick = () => addAreaPageWithData(titleHtml, enText);
+                }
+                yieldGrid.appendChild(btn);
+            });
+            container.appendChild(yieldGrid);
+            
+            // 6. 自由入力
+            const otherTitle = document.createElement('div');
+            otherTitle.className = 'area-section-title';
+            otherTitle.innerHTML = '<i class="fas fa-pen"></i>その他';
+            container.appendChild(otherTitle);
+            
+            const otherGrid = document.createElement('div');
+            otherGrid.className = 'area-grid';
+            const otherBtn = document.createElement('div');
+            otherBtn.className = 'area-btn bg-gray-50';
+            otherBtn.innerHTML = '自由入力';
+            otherBtn.onclick = () => addAreaPageWithData('エリア<br><span class="dynamic-text">名称</span>', 'English Area Name');
+            otherGrid.appendChild(otherBtn);
+            container.appendChild(otherGrid);
+
+            document.getElementById('areaModal').style.display = 'flex';
+        }
+
+        function addAreaPageWithData(nameHtml, enName) {
+            const template = document.getElementById('area-page-template');
+            const clone = template.content.cloneNode(true);
+            const newSheet = clone.querySelector('.sheet');
+            const newId = `sheet-${Date.now()}`;
+            newSheet.id = newId;
+
+            // コンテンツ差し込み
+            // 駅名や利回りはすでに整形済みHTMLで来る場合が多いが、単純な区名などはここで整形
+            let titleHtml = nameHtml;
+            // 単純な区名/市名の場合の整形ロジック（HTMLタグが含まれていない場合のみ適用）
+            if(!nameHtml.includes('<') && (nameHtml.endsWith('区') || nameHtml.endsWith('市'))) {
+                 if(nameHtml.endsWith('区')) {
+                     titleHtml = `札幌市<br><span class="dynamic-text">${nameHtml}</span>エリア`;
+                 } else {
+                     titleHtml = `北海道<br><span class="dynamic-text">${nameHtml}</span>エリア`;
+                 }
+            }
+            
+            newSheet.querySelector('.area-title').innerHTML = titleHtml;
+            newSheet.querySelector('.area-en-title').innerText = enName;
+            
+            const randomColor = getUnusedRandomColor();
+            newSheet.style.setProperty('--theme-color', randomColor);
+
+            document.getElementById('pages-container').appendChild(newSheet);
+            newSheet.scrollIntoView({ behavior: 'smooth' });
+            
+            updatePropertyNumbers(); 
+            closeModal('areaModal');
+        }
+
+        function getUnusedRandomColor() {
+            const usedColors = new Set();
+            document.querySelectorAll('.sheet-area').forEach(sheet => {
+                const color = sheet.style.getPropertyValue('--theme-color').trim();
+                if(color) usedColors.add(color.toLowerCase());
+            });
+            const availableColors = colorPalette.filter(c => !usedColors.has(c.code.toLowerCase()));
+            const pool = availableColors.length > 0 ? availableColors : colorPalette;
+            const randomIndex = Math.floor(Math.random() * pool.length);
+            return pool[randomIndex].code;
+        }
+
+        function updatePropertyNumbers() {
+            const sheets = document.querySelectorAll('#pages-container .sheet');
+            let count = 0;
+            const circledNumbers = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+
+            sheets.forEach(sheet => {
+                if (sheet.classList.contains('sheet-area')) {
+                    count = 0; 
+                } else if (sheet.classList.contains('sheet-property')) {
+                    count++;
+                    const numEl = sheet.querySelector('.property-number');
+                    if (numEl) {
+                        numEl.innerText = count <= 20 ? circledNumbers[count-1] : count;
+                    }
+                }
+            });
+        }
+
+        function addPropertyPage() {
+            const template = document.getElementById('property-page-template');
+            addPageFromTemplate(template);
+        }
+
+        function addPageFromTemplate(template) {
+            const clone = template.content.cloneNode(true);
+            const newSheet = clone.querySelector('.sheet');
+            const newId = `sheet-${Date.now()}`;
+            newSheet.id = newId;
+            document.getElementById('pages-container').appendChild(newSheet);
+            newSheet.scrollIntoView({ behavior: 'smooth' });
+            updatePropertyNumbers(); 
+        }
+
+        function deletePage(sheetId) {
+            if(confirm('このページを削除してもよろしいですか？')) {
+                const sheet = document.getElementById(sheetId);
+                if(sheet) sheet.remove();
+                updatePropertyNumbers(); 
+            }
+        }
+
+        function openColorModal(sheetId) {
+            currentEditingSheetId = sheetId;
+            const modal = document.getElementById('colorModal');
+            const grid = document.getElementById('colorGrid');
+            grid.innerHTML = ''; 
+
+            const usedColors = new Set();
+            document.querySelectorAll('.sheet-area').forEach(sheet => {
+                if(sheet.id !== sheetId) {
+                    const color = sheet.style.getPropertyValue('--theme-color').trim();
+                    if(color) usedColors.add(color.toLowerCase());
+                }
+            });
+
+            const currentSheet = document.getElementById(sheetId);
+            const currentColor = currentSheet.style.getPropertyValue('--theme-color').trim().toLowerCase();
+
+            colorPalette.forEach(color => {
+                const div = document.createElement('div');
+                div.className = 'color-option';
+                div.style.backgroundColor = color.code;
+                div.title = color.name;
+                if (usedColors.has(color.code.toLowerCase())) div.classList.add('used');
+                if (currentColor === color.code.toLowerCase()) div.classList.add('selected');
+                div.onclick = () => applyColor(color.code);
+                grid.appendChild(div);
+            });
+            modal.style.display = 'flex';
+        }
+
+        function applyColor(colorCode) {
+            if (currentEditingSheetId) {
+                const sheet = document.getElementById(currentEditingSheetId);
+                sheet.style.setProperty('--theme-color', colorCode);
+            }
+            closeModal('colorModal');
+        }
+
+        function syncTextToAllAreaPages(btn) {
+            if(!confirm('このページの詳細テキストを、他のすべてのエリアページにコピーしますか？\n※他のページの入力内容は上書きされます。')) return;
+            const currentSheet = btn.closest('.sheet');
+            const textEl = currentSheet.querySelector('.area-detail-text');
+            const textContent = textEl.innerHTML;
+            const allAreaTexts = document.querySelectorAll('.sheet-area .area-detail-text');
+            let count = 0;
+            allAreaTexts.forEach(el => {
+                if (el !== textEl) { 
+                    el.innerHTML = textContent;
+                    count++;
+                }
+            });
+            alert(`${count}件のエリアページに反映しました。`);
+        }
+
+        function triggerFileInput(triggerEl, event) {
+            event.stopPropagation();
+            const input = triggerEl.parentElement.nextElementSibling;
+            if(input && input.type === 'file') {
+                input.click();
+            }
+        }
+
+        function handlePaste(e, zone) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const img = zone.querySelector('img.bg-preview');
+                        if(img) {
+                            img.src = event.target.result;
+                            img.classList.remove('hidden');
+                            const trigger = zone.querySelector('.upload-trigger');
+                            if(trigger) {
+                                trigger.style.opacity = '0';
+                                zone.onmouseenter = () => trigger.style.opacity = '1';
+                                zone.onmouseleave = () => trigger.style.opacity = '0';
+                            }
+                        }
+                    };
+                    reader.readAsDataURL(blob);
+                    e.preventDefault();
+                    return; 
+                }
+            }
+        }
+
+        function previewBgGeneral(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const parent = input.previousElementSibling; 
+                    const img = parent.querySelector('img.bg-preview');
+                    if(img) {
+                        img.src = e.target.result;
+                        img.classList.remove('hidden');
+                        const trigger = parent.querySelector('.upload-trigger');
+                        if(trigger) {
+                            trigger.style.opacity = '0';
+                            parent.addEventListener('mouseenter', () => trigger.style.opacity = '1');
+                            parent.addEventListener('mouseleave', () => trigger.style.opacity = '0');
+                        }
+                    }
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function previewLogo(input, idSuffix) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.getElementById(`logo-preview-${idSuffix}`);
+                    const placeholder = document.getElementById(`logo-placeholder-${idSuffix}`);
+                    img.src = e.target.result;
+                    img.classList.remove('hidden');
+                    placeholder.classList.add('hidden');
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // --- 自動日付設定（ファイルを開いたとき） ---
+        window.onload = function() {
+            const dateEl = document.getElementById('creation-date');
+            if(dateEl) {
+                const today = new Date();
+                dateEl.innerText = `${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日 作成`;
+            }
+        };
+
+        function saveHTML() {
+            try {
+                document.querySelectorAll('input[type="text"], textarea').forEach(el => {
+                    el.setAttribute('value', el.value);
+                    if(el.tagName === 'TEXTAREA') el.textContent = el.value;
+                });
+                const titleEl = document.getElementById('report-title');
+                let fileName = '物件紹介資料.html';
+                if (titleEl && titleEl.innerText.trim() !== "") {
+                    const safeTitle = titleEl.innerText.trim().replace(/[\\/:*?"<>|]/g, '');
+                    fileName = safeTitle + '.html';
+                }
+
+                // 保存前に日付IDを削除して、次回以降自動更新されないようにする（固定化）
+                const dateEl = document.getElementById('creation-date');
+                if(dateEl) dateEl.removeAttribute('id');
+
+                const htmlContent = document.documentElement.outerHTML;
+                
+                // 保存後にIDを復帰（編集作業継続のため）
+                if(dateEl) dateEl.id = 'creation-date';
+
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                console.error(e);
+                alert('保存中にエラーが発生しました。');
+            }
+        }
+    </script>
+</body>
+</html>
