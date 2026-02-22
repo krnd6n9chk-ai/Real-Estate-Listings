@@ -4,6 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>物件資料表紙 - A4横 (日付自動リンク版)</title>
+    
+    <!-- PWA化（インストール対応）用スクリプト -->
+    <script>
+    (function() {
+        // 1. アイコンの動的生成
+        var c = document.createElement('canvas');
+        c.width = 512; c.height = 512;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#2C3E50'; // 濃紺
+        ctx.fillRect(0,0,512,512);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 180px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('物件', 256, 180);
+        ctx.fillText('資料', 256, 350);
+        var iconUrl = c.toDataURL('image/png');
+
+        // 2. iOS用メタタグ
+        var m1 = document.createElement('meta'); m1.name = 'apple-mobile-web-app-capable'; m1.content = 'yes'; document.head.appendChild(m1);
+        var m2 = document.createElement('meta'); m2.name = 'apple-mobile-web-app-status-bar-style'; m2.content = 'black-translucent'; document.head.appendChild(m2);
+        var m3 = document.createElement('meta'); m3.name = 'apple-mobile-web-app-title'; m3.content = '物件資料作成'; document.head.appendChild(m3);
+        
+        var appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = iconUrl; document.head.appendChild(appleIcon);
+        var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.type = 'image/png'; favicon.href = iconUrl; document.head.appendChild(favicon);
+
+        // 3. Manifestの動的生成 (インストール要件)
+        var manifest = {
+            "name": "物件資料作成ツール",
+            "short_name": "物件資料",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#525659",
+            "theme_color": "#2C3E50",
+            "icons": [{"src": iconUrl, "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]
+        };
+        var blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+        var link = document.createElement('link'); link.rel = 'manifest'; link.href = URL.createObjectURL(blob); document.head.appendChild(link);
+
+        // 4. Service Workerの動的登録 (インストール要件)
+        if ('serviceWorker' in navigator) {
+            var swCode = "self.addEventListener('install', function(e){self.skipWaiting();}); self.addEventListener('activate', function(e){self.clients.claim();}); self.addEventListener('fetch', function(e){});";
+            var swBlob = new Blob([swCode], {type: 'application/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(err => console.log(err));
+        }
+    })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -232,11 +280,17 @@
                 <i class="fas fa-file-powerpoint text-accent"></i>
                 <span id="report-title" contenteditable="true" class="font-bold text-lg border-b border-gray-600 focus:border-accent focus:outline-none px-1">物件紹介資料_A4横</span>
             </div>
-            <div class="text-xs text-gray-400 pl-4 border-l border-gray-700">
+            <div class="text-xs text-gray-400 pl-4 border-l border-gray-700 hidden md:block">
                 <i class="fas fa-info-circle mr-1"></i>テキスト編集 / 画像Ctrl+V貼付
             </div>
         </div>
         <div class="flex gap-3">
+            <!-- インストールボタン (アプリとしてインストール可能な時だけ表示される) -->
+            <button id="install-app-btn" onclick="installPWA()" class="hidden bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-3 rounded shadow text-sm flex items-center gap-2 transition animate-pulse">
+                <i class="fas fa-download"></i> アプリをインストール
+            </button>
+            <div class="w-px bg-gray-600 mx-1 hidden md:block"></div>
+
             <button onclick="openEditorModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded shadow text-sm flex items-center gap-2 transition">
                 <i class="fas fa-tools"></i> 画像編集
             </button>
@@ -249,7 +303,7 @@
             </button>
             <div class="w-px bg-gray-600 mx-1"></div>
             <button onclick="saveHTML()" class="bg-success hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow text-sm flex items-center gap-2 transition">
-                <i class="fas fa-download"></i> 保存
+                <i class="fas fa-save"></i> 保存
             </button>
             <button onclick="window.print()" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded shadow text-sm transition flex items-center gap-2">
                 <i class="fas fa-print"></i> 印刷
@@ -282,7 +336,6 @@
             <div class="flex justify-between items-start border-b border-gray-400/50 pb-4 mb-8">
                 <div>
                     <p class="text-xs font-bold tracking-[0.2em] text-accent uppercase mb-1">Real Estate Presentation</p>
-                    <!-- 自動日付設定用のID "creation-date" を付与 -->
                     <p id="creation-date" class="text-sm text-gray-600 font-serif" contenteditable="true">2026年1月26日 作成</p>
                 </div>
                 <div class="text-right">
@@ -453,6 +506,27 @@
     </template>
 
     <script>
+        // PWAインストールプロンプト捕捉処理
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtn = document.getElementById('install-app-btn');
+            if (installBtn) installBtn.classList.remove('hidden');
+        });
+
+        function installPWA() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('アプリがインストールされました');
+                }
+                deferredPrompt = null;
+                document.getElementById('install-app-btn').classList.add('hidden');
+            });
+        }
+
         // エリアデータ定義
         const areaData = {
             sapporo: [
@@ -683,14 +757,13 @@
             const renderGrid = (title, items, onclickGen, isSmall=false) => {
                 const titleDiv = document.createElement('div');
                 titleDiv.className = 'area-section-title';
-                titleDiv.innerHTML = title; // HTML許可
+                titleDiv.innerHTML = title; 
                 container.appendChild(titleDiv);
                 const grid = document.createElement('div');
                 grid.className = isSmall ? 'area-grid-station' : 'area-grid';
                 items.forEach(item => {
                     const btn = document.createElement('div');
                     btn.className = isSmall ? 'area-btn-station' : 'area-btn';
-                    // アイテムがオブジェクトならnameプロパティ、文字列ならそのまま
                     const label = item.name || item.n || item;
                     btn.innerText = label;
                     btn.onclick = onclickGen(item);
@@ -724,9 +797,7 @@
                     const btn = document.createElement('div');
                     btn.className = 'area-btn-station';
                     btn.innerText = st.n;
-                    // 地下鉄〇〇線〇〇駅エリア
                     const titleHtml = `地下鉄${name}<br><span class="dynamic-text">${st.n}</span>駅エリア`;
-                    // Subway XX Line XX Station Area
                     const lineEn = name === '南北線' ? 'Namboku' : name === '東西線' ? 'Tozai' : 'Toho';
                     const enText = `Subway ${lineEn} Line ${st.e} Station Area`;
                     
@@ -818,10 +889,7 @@
             const newId = `sheet-${Date.now()}`;
             newSheet.id = newId;
 
-            // コンテンツ差し込み
-            // 駅名や利回りはすでに整形済みHTMLで来る場合が多いが、単純な区名などはここで整形
             let titleHtml = nameHtml;
-            // 単純な区名/市名の場合の整形ロジック（HTMLタグが含まれていない場合のみ適用）
             if(!nameHtml.includes('<') && (nameHtml.endsWith('区') || nameHtml.endsWith('市'))) {
                  if(nameHtml.endsWith('区')) {
                      titleHtml = `札幌市<br><span class="dynamic-text">${nameHtml}</span>エリア`;
@@ -1042,13 +1110,11 @@
                     fileName = safeTitle + '.html';
                 }
 
-                // 保存前に日付IDを削除して、次回以降自動更新されないようにする（固定化）
                 const dateEl = document.getElementById('creation-date');
                 if(dateEl) dateEl.removeAttribute('id');
 
                 const htmlContent = document.documentElement.outerHTML;
                 
-                // 保存後にIDを復帰（編集作業継続のため）
                 if(dateEl) dateEl.id = 'creation-date';
 
                 const blob = new Blob([htmlContent], { type: 'text/html' });
