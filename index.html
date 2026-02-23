@@ -261,13 +261,33 @@
 
         /* 印刷設定 */
         @media print {
-            body { background: none; }
-            .sheet { margin: 0; box-shadow: none; width: 297mm; height: 210mm; page-break-after: always; }
+            @page { size: A4 landscape; margin: 0; }
+            html, body { 
+                margin: 0; 
+                padding: 0; 
+                background: white; 
+            }
+            .sheet { 
+                margin: 0; 
+                box-shadow: none; 
+                width: 297mm; 
+                height: 210mm; 
+                max-height: 210mm; /* はみ出しによる改ページを防止 */
+                page-break-after: always; 
+                page-break-inside: avoid;
+                overflow: hidden !important;
+            }
             .no-print, .page-btn { display: none !important; }
-            .bg-upload-zone { background-color: white; }
+            .bg-upload-zone { background-color: transparent !important; }
             .upload-trigger { display: none !important; }
             [contenteditable]:empty::before { content: none; }
-            .bg-upload-zone:focus { box-shadow: none; background-color: white; }
+            .bg-upload-zone:focus { box-shadow: none; background-color: transparent !important; }
+            
+            /* Chromeなどの印刷時のFlexbox高さ計算バグ対策 */
+            .content-layer {
+                /* p-12(上下3remずつ)を引いた高さを強制確保してフッターを最下部に落とす */
+                height: calc(210mm - 6rem) !important; 
+            }
         }
     </style>
 </head>
@@ -331,7 +351,7 @@
         <div class="absolute top-0 right-[38%] w-2 h-full bg-accent/20 -skew-x-12 transform origin-top-right z-2"></div>
         <div class="absolute bottom-0 left-0 w-full h-4 bg-primary z-10"></div>
 
-        <div class="content-layer z-10 h-full flex flex-col relative">
+       <div class="content-layer z-10 h-full w-full flex flex-col relative">
             <!-- ヘッダー -->
             <div class="flex justify-between items-start border-b border-gray-400/50 pb-4 mb-8">
                 <div>
